@@ -23,6 +23,8 @@ struct threadpool_t *init_threadpool(int num_threads);
 
 int submit_job(struct threadpool_t *pool, void(*function)(void *), void *argument);
 
+int threadpool_shutdown(struct threadpool_t *pool);
+
 int free_threadpool(struct threadpool_t *pool);
 
 
