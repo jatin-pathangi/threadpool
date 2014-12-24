@@ -3,6 +3,8 @@
 #ifndef _THREADPOOL_H
 #define _THREADPOOL_H
 
+#define q_name "/queue"
+
 struct threadpool_t { 
   pthread_mutex_t lock;
   pthread_cond_t cond;
