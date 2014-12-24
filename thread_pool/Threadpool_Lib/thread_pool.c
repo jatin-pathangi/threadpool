@@ -11,9 +11,23 @@ void *thr_fn(void *arg);
 
 struct threadpool_t *init_threadpool(int num_threads) 
 {
-  
+  struct mq_attr attr;
+  attr.mq_maxmsg = 10;
+  attr.mq_flags = 0;
+  attr.mq_msgsize = sizeof(struct threadpool_job);
+  attr.mq_curmsgs = 0;
   struct threadpool_t *pool;
   int i;
+  mqd_t m;
+  /*Create a message queue for storing pending job requests*/
+  mq_unlink(q_name);
+  
+  if((m = mq_open(q_name, O_RDWR | O_CREAT, 0666, &attr)) == -1) {
+    printf("mq_open failed %s\n", strerror(errno));
+    exit(0);
+  }
+  
+  pool->mq = m;
 
   if((pool = (struct threadpool_t *)malloc(sizeof(struct threadpool_t))) == NULL) {
     printf("Allocating threadpool failed %s\n", strerror(errno));
@@ -125,6 +139,8 @@ int free_threadpool(struct threadpool_t *pool)
     pthread_mutex_lock(&pool->lock);
     pthread_mutex_destroy(&pool->lock);
     pthread_cond_destroy(&pool->cond);
+    mq_close(m);
+    mq_unlink(q_name);
   }
   
   free(pool);
