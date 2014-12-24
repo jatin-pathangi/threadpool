@@ -89,6 +89,7 @@ int submit_job(struct threadpool_t *pool, void(*function)(void *), void *argumen
   }
 
    if(pool->shutdown) {
+     pthread_mutex_unlock(&pool->lock);
      return 0;
    }
 
