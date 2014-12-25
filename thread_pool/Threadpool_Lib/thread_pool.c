@@ -1,10 +1,7 @@
 #include <mqueue.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include "thread_pool.h"
-#include <errno.h>
-#include <string.h>
 
 void *thr_fn(void *arg);
 
