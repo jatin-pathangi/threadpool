@@ -17,7 +17,8 @@ void dummy(void *arg)
 
 int main(void)
 {
-  struct threadpool_t *pool;
+  void *pool;
+  mqd_t m;
   pool = init_threadpool(THREADS);
 
   int i = 0;
