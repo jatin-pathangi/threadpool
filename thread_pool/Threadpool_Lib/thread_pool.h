@@ -3,7 +3,7 @@
 #ifndef _THREADPOOL_H
 #define _THREADPOOL_H
 
-#define q_name "/queue"
+#define QUEUE_NAME_LENGTH 10
 
 struct threadpool_t { 
   pthread_mutex_t lock;
@@ -21,13 +21,14 @@ struct threadpool_job {
   void *arg;
 };
 
-struct threadpool_t *init_threadpool(int num_threads);
+void get_random_qname(char *qname, int len);
 
-int submit_job(struct threadpool_t *pool, void(*function)(void *), void *argument);
+void *init_threadpool(int num_threads);
 
-int threadpool_shutdown(struct threadpool_t *pool);
+int submit_job(void *pool, void(*function)(void *), void *argument);
 
 int free_threadpool(struct threadpool_t *pool);
 
+int threadpool_shutdown(void *pool);
 
 #endif
