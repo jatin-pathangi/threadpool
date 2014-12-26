@@ -1,11 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <mqueue.h>
-#include <pthread.h>
 #include "thread_pool.h"
-#include <errno.h>
-#include <string.h>
-#include <fcntl.h>
 
 #define THREADS 15
 #define q_name "/queue"
@@ -18,7 +13,6 @@ void dummy(void *arg)
 int main(void)
 {
   void *pool;
-  mqd_t m;
   pool = init_threadpool(THREADS);
 
   int i = 0;
@@ -31,4 +25,6 @@ int main(void)
   
   return 0;
 }
+
+
 
