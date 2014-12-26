@@ -23,6 +23,7 @@ struct threadpool_job {
 void *thr_fn(void *arg);
 
 char q_name[QUEUE_NAME_LENGTH];
+
 /*Function to generate a random queue name so that different processes don't interfere with each other*/
 static void get_random_qname(char *qname, int len) 
 {
