@@ -3,11 +3,28 @@
 #include <pthread.h>
 #include "thread_pool.h"
 
+#define QUEUE_NAME_LENGTH 10
+
+struct threadpool_t { 
+  pthread_mutex_t lock;
+  pthread_cond_t cond;
+  pthread_t *threads;
+  mqd_t mq;
+  int pending_count;   //Count of the number of pending jobs in the message queue
+  int thread_count;
+  int shutdown;  
+};
+
+struct threadpool_job {
+  void(*func)(void *);
+  void *arg;
+};
+
 void *thr_fn(void *arg);
 
 char q_name[QUEUE_NAME_LENGTH];
 
-void get_random_qname(char *qname, int len) 
+static void get_random_qname(char *qname, int len) 
 {
   const char alph [] = "ABCDEFGHIJKLMONPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz";
   qname[0] = '/';
@@ -18,7 +35,8 @@ void get_random_qname(char *qname, int len)
 
   qname[len] = 0;
 }
-/*Function to allocate data structures and create worker threads*/
+
+/*Function to allocate data structures and create worker threads, returns if error is encountered in any function*/
 void *init_threadpool(int num_threads) 
 {
   /*Message queue attributes*/
@@ -41,11 +59,12 @@ void *init_threadpool(int num_threads)
   pool->pending_count = 0;
   pool->shutdown = 0;
   mqd_t m;
+
   /*Create a message queue for storing pending job requests*/
   mq_unlink(q_name);
  
   if(( m = mq_open(q_name, O_RDWR | O_CREAT, 0666, &attr)) == -1) {
-
+    free(pool);
     return NULL;
   }
 
@@ -53,24 +72,33 @@ void *init_threadpool(int num_threads)
 
   /*Initialize mutex and condition variables*/
   if((pthread_mutex_init(&pool->lock, NULL)) != 0) {
+    free(pool);
     return NULL;
   }
 
   if(pthread_cond_init(&pool->cond, NULL) != 0) {
+    pthread_mutex_destroy(&pool->lock);
+    free(pool);
     return NULL;
   }
 
-  /*Allocate threads*/
   if((pool->threads = (pthread_t *)malloc(sizeof(pthread_t) * num_threads)) == NULL) {
+    pthread_mutex_destroy(&pool->lock);
+    pthread_cond_destroy(&pool->cond);
+    free(pool);
     return NULL;
-    }
+  }
 
   /*Start Worker threads*/
-
   for(i = 0; i < num_threads; i++) { 
     if(pthread_create(&pool->threads[i], NULL, thr_fn, (void *)pool) != 0) {
+      pthread_mutex_destroy(&pool->lock);
+      pthread_cond_destroy(&pool->cond);
+      free(pool->threads);
+      free(pool);
       return NULL;
       }
+
     pool->thread_count++;
     }
 
@@ -104,7 +132,7 @@ int submit_job(void *p, void(*function)(void *), void *argument)
      return -1;
   }
 
-  /*Add job to message queue, sending address of pointer*/
+  /*Add job to message queue, sending pointer*/
   if(mq_send(pool->mq, (const char *)&j, sizeof(j), 0) == -1) {
     return -1;
   }
@@ -114,10 +142,8 @@ int submit_job(void *p, void(*function)(void *), void *argument)
     return -1 ;
   }
     
-  /*One more pending job to be received*/
   pool->pending_count++;
 
-  /*Signal (or broadcast) sleeping threads waiting for pending jobs to receive*/
   if(pthread_cond_signal(&pool->cond) != 0) {
     return -1;
   }
@@ -130,7 +156,7 @@ int submit_job(void *p, void(*function)(void *), void *argument)
 }
 
 /*Used by threadpool_shutdown to free data structures after joining worker threads*/
-int free_threadpool(struct threadpool_t *pool) 
+static int free_threadpool(struct threadpool_t *pool) 
 {
   if(pool == NULL)
     return -1;
@@ -151,7 +177,7 @@ int free_threadpool(struct threadpool_t *pool)
 
 }
 
-/*Function sets shutdown variable and joins all worker threads, and then calls free_threadpool() to free the data structures. Returns 0 on success and -1 on failure*/ 
+/*Function sets shutdown variable and joins all worker threads, and then calls free_threadpool() to free the data structures. Returns 0 on success and -1 on failure and 1 if shutdown is already set*/ 
 int threadpool_shutdown(void *p)
 { 
   struct threadpool_t *pool = (struct threadpool_t *)p; 
@@ -161,30 +187,27 @@ int threadpool_shutdown(void *p)
     return -1;
   }
 
-  /*If already shutting down*/
   if(pool->shutdown) {
     return 1;
   }
 
-  /*Set shutdown variable*/
   pool->shutdown = 1;
 
-  /*Wake up all sleeping threads*/
   if(pthread_cond_broadcast(&pool->cond) != 0) {
     return -1;
   }
  
   pthread_mutex_unlock(&pool->lock);
   
-  /*Join all running threads*/
   for(i = 0; i < pool->thread_count; i++) {
     if(pthread_join(pool->threads[i], NULL) != 0) {
       return -1;
     }
   }
  
- /*Free the threadpool*/
-  free_threadpool(pool);
+  if(free_threadpool(pool) == -1) {
+    return -1;
+  }
 
   return 0;
 }
@@ -199,29 +222,25 @@ void *thr_fn(void *arg)
     if(pthread_mutex_lock(&pool->lock) != 0) {
       pthread_exit(NULL);
     }
+
     /*Wait on condition variable and check for spurious wakeups*/
-    while(pool->pending_count == 0 && pool->shutdown == 0) 
+    while(pool->pending_count == 0 && pool->shutdown == 0) { 
       pthread_cond_wait(&pool->cond, &pool->lock);
+    }
 
     /*If thread was woken up by the shutdown condition*/
-    if(pool->shutdown == 1 && pool->pending_count == 0) 
+    if(pool->shutdown == 1 && pool->pending_count == 0){ 
       break;
-
+    }
+    
     /*Pull job from the message queue*/
-
     if(mq_receive(pool->mq, (char *)&j, sizeof(j), NULL) == -1) {
       pthread_mutex_unlock(&pool->lock);
       pthread_exit(NULL);
     }
     
-    /*Since job is fetched, one less job is pending*/
-
     pool->pending_count--;
- 
     pthread_mutex_unlock(&pool->lock);
-
-    /*Execute the function present in the threadpool_job structure*/
-
     (*(j.func))(j.arg);
 
   };
@@ -230,5 +249,4 @@ void *thr_fn(void *arg)
 
   pthread_exit(NULL);
  
-
 }
