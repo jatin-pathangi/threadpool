@@ -7,6 +7,7 @@
 
 void dummy(void *arg) 
 { 
+  sleep(1);
   printf("Executing\n");
 }
 
@@ -20,11 +21,11 @@ int main(void)
     submit_job(pool, &dummy, NULL);
     i++;
   }
-  
-  threadpool_shutdown(pool);
+  threadpool_shutdown(pool, 1);
   
   return 0;
 }
+
 
 
 
