@@ -20,11 +20,10 @@ struct threadpool_job {
   void *arg;
 };
 
-void *thr_fn(void *arg);
+static void *thr_fn(void *arg);
 
 char q_name[QUEUE_NAME_LENGTH];
 
-/*Function to generate a random queue name so that different processes don't interfere with each other*/
 static void get_random_qname(char *qname, int len) 
 {
   const char alph [] = "ABCDEFGHIJKLMONPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz";
@@ -179,7 +178,7 @@ static int free_threadpool(struct threadpool_t *pool)
 }
 
 /*Function sets shutdown variable and joins all worker threads, and then calls free_threadpool() to free the data structures. Returns 0 on success and -1 on failure and 1 if shutdown is already set*/ 
-int threadpool_shutdown(void *p)
+int threadpool_shutdown(void *p, int flag)
 { 
   struct threadpool_t *pool = (struct threadpool_t *)p; 
   int i;
@@ -188,21 +187,26 @@ int threadpool_shutdown(void *p)
     return -1;
   }
 
-  if(pool->shutdown) {
-    return 1;
+  pool->shutdown = flag;
+
+  if(flag == ABORT_SHUT) {
+    pthread_mutex_unlock(&pool->lock);
+    for(i = 0; i < pool->thread_count; i++) {
+      pthread_cancel(pool->threads[i]);
+	}
   }
 
-  pool->shutdown = 1;
-
-  if(pthread_cond_broadcast(&pool->cond) != 0) {
-    return -1;
-  }
- 
-  pthread_mutex_unlock(&pool->lock);
-  
-  for(i = 0; i < pool->thread_count; i++) {
-    if(pthread_join(pool->threads[i], NULL) != 0) {
+  else{
+    if(pthread_cond_broadcast(&pool->cond) != 0) {
       return -1;
+    }
+ 
+    pthread_mutex_unlock(&pool->lock);
+  
+    for(i = 0; i < pool->thread_count; i++) {
+      if(pthread_join(pool->threads[i], NULL) != 0) {
+	return -1;
+      }
     }
   }
  
@@ -214,7 +218,7 @@ int threadpool_shutdown(void *p)
 }
 
 /*Thread worker function which receives from the message queue and executes the job function*/
-void *thr_fn(void *arg) 
+static void *thr_fn(void *arg) 
 {
   struct threadpool_t *pool = (struct threadpool_t *)arg;
   struct threadpool_job j;
@@ -230,9 +234,10 @@ void *thr_fn(void *arg)
     }
 
     /*If thread was woken up by the shutdown condition*/
-    if(pool->shutdown == 1 && pool->pending_count == 0){ 
+    if((pool->shutdown == GRACEFUL_SHUT && pool->pending_count == 0) || pool->shutdown == IMM_SHUT || pool->shutdown == ABORT_SHUT){ 
       break;
     }
+
     
     /*Pull job from the message queue*/
     if(mq_receive(pool->mq, (char *)&j, sizeof(j), NULL) == -1) {
@@ -250,4 +255,5 @@ void *thr_fn(void *arg)
 
   pthread_exit(NULL);
  
+
 }
