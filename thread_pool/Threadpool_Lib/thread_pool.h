@@ -1,6 +1,8 @@
 #ifndef _THREADPOOL_H
 #define _THREADPOOL_H
-
+/*3 types of shutdown, 1 for finishing only running jobs and not do the jobs still in the queue
+  2 for finishing all currently pending jobs in the queue
+  3 for shutting down immediately aborting running functions.*/
 #define IMM_SHUT 1
 #define GRACEFUL_SHUT 2
 #define ABORT_SHUT 3
