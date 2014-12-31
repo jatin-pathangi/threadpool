@@ -24,6 +24,7 @@ static void *thr_fn(void *arg);
 
 char q_name[QUEUE_NAME_LENGTH];
 
+/*Generate a random queue name everytime so processes don't interfere with each other*/
 static void get_random_qname(char *qname, int len) 
 {
   const char alph [] = "ABCDEFGHIJKLMONPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz";
@@ -119,7 +120,6 @@ int submit_job(void *p, void(*function)(void *), void *argument)
     return -1;
   }
 
-  /*Check if shutdown has started*/
    if(pthread_mutex_lock(&pool->lock) != 0) {
      return -1;
   }
