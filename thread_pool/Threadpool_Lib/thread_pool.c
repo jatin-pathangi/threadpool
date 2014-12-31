@@ -125,6 +125,7 @@ int submit_job(void *p, void(*function)(void *), void *argument)
   }
 
    if(pool->shutdown) {
+     pthread_mutex_unlock(&pool->lock);
      return 1;
    }
 
